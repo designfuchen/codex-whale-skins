@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "whale-skins",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Create, validate and install native Codex pet skins with honest state-driven animation.",
   "author": {
     "name": "designfuchen",

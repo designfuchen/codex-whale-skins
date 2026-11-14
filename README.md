@@ -13,9 +13,9 @@ codex plugin add whale-skins@whale-skins
 
 在插件页运行设置工作流，或在 Codex 中要求“用鲸娘皮肤工坊安装并检查我的桌宠”。本地插件更新后的可见时机取决于客户端；必要时在当前任务结束后重启桌面应用。
 
-安装原生皮肤后，在 Settings > Pets 刷新并选择角色，再用 `/pet` 显示桌宠。插件会区分文件安装成功、角色被选中和实际显示成功，不会把这些状态混为一谈。原生桌宠行为见 [官方说明](https://learn.chatgpt.com/docs/pets)。
+新版客户端可能使用账号宠物库：仅把文件放进 `~/.codex/pets` 并不保证角色出现在列表。设置工作流会优先通过可用的官方 Pets 工具校验、登记、选择角色，并核对返回的 active ID；本地目录保留作兼容和导出。使用 `/pet` 显示原生浮窗。插件会区分本地文件、账号登记、选中和实际显示四个结果。原生桌宠行为见 [官方说明](https://learn.chatgpt.com/docs/pets)。
 
-## 命令行工具
+## 本地包工具
 
 需要 Python 3.10+ 和 Pillow。Codex 桌面工作流优先使用其自带运行环境。
 
@@ -27,6 +27,8 @@ whale-skins doctor
 ```
 
 也可以直接运行 `plugins/whale-skins/scripts/skin_manager.py`。测试安装可指定 `--codex-home /tmp/my-test-codex`。默认遵循 `CODEX_HOME`，否则使用 `~/.codex`。重名且内容不同的皮肤默认不覆盖；明确重装时使用 `--replace`，旧包会先备份到 `pet-skin-backups`。
+
+这里的 `install` 只安装本地文件，输出明确标记 `local-package-only`；它不读取账号凭据，也不调用私有客户端接口。账号库登记和选择通过 Codex 中可用的官方 Pets 工具完成。工具不可用时应使用客户端支持的自定义宠物导入流程，并明确说明尚未登记或启用，不能把本地文件校验当成显示成功。
 
 ## 原生动作格式
 

@@ -53,6 +53,9 @@ class PackagesTest(unittest.TestCase):
         second = install(self.package, home=home)
         self.assertTrue(first["changed"])
         self.assertFalse(second["changed"])
+        self.assertEqual(first["install_mode"], "local-package-only")
+        self.assertFalse(first["registered_in_account"])
+        self.assertFalse(first["activation_verified"])
         self.assertTrue((self.package / "spritesheet.png").exists())
         self.assertFalse(doctor(home)["activation_verified"])
 

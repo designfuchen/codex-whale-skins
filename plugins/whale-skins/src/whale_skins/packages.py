@@ -164,7 +164,8 @@ def install(source: str | Path, *, home: str | Path | None = None, replace: bool
                 old = None
             normalized = dict(result["manifest"], spritesheetPath="spritesheet" + Path(result["image"]).suffix.lower())
             if old is not None and old["sha256"] == result["sha256"] and old["manifest"] == normalized:
-                return {"installed": True, "changed": False, "path": str(destination), "id": result["id"], "sha256": result["sha256"]}
+                return {"installed": True, "install_mode": "local-package-only", "registered_in_account": False, "activation_verified": False,
+                        "changed": False, "path": str(destination), "id": result["id"], "sha256": result["sha256"]}
             if not replace:
                 raise SkinError("A different pet already uses that ID. Pass --replace to create a backup and replace it.")
         pets.mkdir(parents=True, exist_ok=True)
@@ -192,9 +193,10 @@ def install(source: str | Path, *, home: str | Path | None = None, replace: bool
         finally:
             if stage.exists():
                 shutil.rmtree(stage)
-        return {"installed": True, "changed": True, "id": result["id"], "path": str(destination),
+        return {"installed": True, "install_mode": "local-package-only", "registered_in_account": False, "activation_verified": False,
+                "changed": True, "id": result["id"], "path": str(destination),
                 "sha256": result["sha256"], "backup": str(backup) if backup else None,
-                "activation": "Choose this pet in the desktop app's Settings > Pets. Installation alone does not prove activation."}
+                "activation": "This stages local files only. Account-library clients require official Pets registration and selection; file existence does not prove listing or activation."}
 
 
 def doctor(home: str | Path | None = None) -> dict:
