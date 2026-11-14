@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 
 from PIL import Image, ImageFilter
@@ -73,7 +74,9 @@ def load_native_alpha_image(image: Image.Image, source: Path) -> Image.Image:
 # preserves jump displacement without changing rendered character pixels.
 FRAME_BODY_HEIGHT = CELL_HEIGHT - 10
 FRAME_BASELINE = None
-CONNECTIVITY_ALPHA_THRESHOLD = 16
+CONNECTIVITY_ALPHA_THRESHOLD = int(os.environ.get("WHALE_SKINS_ALPHA_CORE_THRESHOLD", "16"))
+if not 0 <= CONNECTIVITY_ALPHA_THRESHOLD <= 128:
+    raise ValueError("WHALE_SKINS_ALPHA_CORE_THRESHOLD must be between 0 and 128")
 
 
 def fit_to_cell(image: Image.Image) -> Image.Image:
@@ -369,7 +372,7 @@ def main() -> None:
     )
     parser.add_argument("--body-height", type=int, default=CELL_HEIGHT - 10, help="Common non-jump viewport height; use with stable-slots to reserve jump space")
     parser.add_argument("--baseline", type=int, help="Bottom-aligned viewport baseline inside each cell")
-    parser.add_argument("--connectivity-alpha-threshold", type=int, default=16, help="Alpha used only to separate pose cores; original edge RGBA is preserved")
+    parser.add_argument("--connectivity-alpha-threshold", type=int, default=CONNECTIVITY_ALPHA_THRESHOLD, help="Alpha used only to separate pose cores; original edge RGBA is preserved")
     args = parser.parse_args()
     if not 16 <= args.body_height <= CELL_HEIGHT - 10:
         parser.error("body-height must be between 16 and 198")

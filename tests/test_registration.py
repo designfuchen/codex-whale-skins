@@ -17,6 +17,14 @@ def load(name):
 
 
 class RegistrationTest(unittest.TestCase):
+    def test_cardinal_edge_noise_is_distinct_from_visible_clipping(self):
+        cardinal = load("extract_cardinal_anchors")
+        image = Image.new("RGBA", (20, 20), (20, 100, 210, 1))
+        ImageDraw.Draw(image).rectangle((5, 5, 14, 14), fill=(20, 100, 210, 255))
+        self.assertEqual(cardinal.edge_alpha_count(image, 2), 0)
+        image.putpixel((0, 10), (20, 100, 210, 255))
+        self.assertGreater(cardinal.edge_alpha_count(image, 2), 0)
+
     def test_faint_alpha_bridge_does_not_merge_poses_or_erase_edges(self):
         extract = load("extract_strip_frames")
         extract.CONNECTIVITY_ALPHA_THRESHOLD = 96

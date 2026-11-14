@@ -214,7 +214,8 @@ def doctor(home: str | Path | None = None) -> dict:
 def package_run(run: str | Path, destination: str | Path, *, pet_id: str, name: str) -> dict:
     run, destination = Path(run).resolve(), Path(destination).resolve()
     checks = {"atlas": run / "final/validation-extended.json", "frames": run / "qa/review.json",
-              "blind": run / "qa/direction-blind-validation.json", "semantics": run / "qa/direction-semantics.json"}
+              "blind": run / "qa/direction-blind-validation.json", "semantics": run / "qa/direction-semantics.json",
+              "standard_visual": run / "qa/standard-visual-qa.json", "final_visual": run / "qa/final-visual-qa.json"}
     for key, path in checks.items():
         if not path.is_file():
             raise SkinError(f"Missing {key} QA report: {path.name}")

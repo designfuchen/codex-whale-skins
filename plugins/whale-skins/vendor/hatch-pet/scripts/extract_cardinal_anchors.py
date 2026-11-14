@@ -27,7 +27,10 @@ def edge_alpha_count(image: Image.Image, margin: int) -> int:
     alpha = image.getchannel("A")
     width, height = alpha.size
     return sum(
-        alpha_count(alpha.crop(box))
+        # Modified by Whale Skins: the native-source contract permits faint
+        # alpha <=16 noise. Count visible edge pixels; keep the margin and
+        # pixel-count clipping gates unchanged for actual foreground.
+        sum(alpha.crop(box).histogram()[17:])
         for box in (
             (0, 0, width, margin),
             (0, height - margin, width, height),

@@ -44,6 +44,8 @@ python -m unittest discover -s tests -v
 
 测试覆盖原生网格、保留 neutral 格、透明背景、空帧、ZIP 越界、源文件保留、重装备份、重复安装、跳跃位移与 neutral 注册。测试使用明确的合成几何像素，不把它们当作宠物素材。
 
+GitHub Actions 配置保存在 `ci/github-actions-template.yml`。仓库创建时的授权不含 workflow scope，因此没有自动启用；需要 CI 时可由有相应权限的维护者放入 `.github/workflows/test.yml`。
+
 ## 数据和授权
 
 工具只处理用户提供的皮肤文件与原生 pets 目录，不读取聊天内容或账号密钥。插件本身不运行日志监控进程，也不接管任务审批。真实状态、浮层和活动托盘由桌面客户端提供。
