@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+.DS_Store
+.local-preview/
+private-artwork/
+dist/
+build/
+*.log

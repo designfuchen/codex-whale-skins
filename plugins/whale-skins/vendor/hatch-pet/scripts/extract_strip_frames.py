@@ -1,0 +1,417 @@
+#!/usr/bin/env python3
+"""Extract generated horizontal row strips into 192x208 sprite frames."""
+
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+
+from PIL import Image, ImageFilter
+
+CELL_WIDTH = 192
+CELL_HEIGHT = 208
+ROW_FRAME_COUNTS = {
+    "idle": 6,
+    "running-right": 8,
+    "running-left": 8,
+    "waving": 4,
+    "jumping": 5,
+    "failed": 8,
+    "waiting": 6,
+    "running": 6,
+    "review": 6,
+}
+
+
+def parse_states(raw: str) -> list[str]:
+    if raw.strip().lower() == "all":
+        return list(ROW_FRAME_COUNTS)
+    states = [item.strip() for item in raw.split(",") if item.strip()]
+    unknown = sorted(set(states) - set(ROW_FRAME_COUNTS))
+    if unknown:
+        raise SystemExit(f"unknown state(s): {', '.join(unknown)}")
+    return states
+
+
+def load_native_alpha_image(image: Image.Image, source: Path) -> Image.Image:
+    """Accept encoded transparent artwork without changing its colors or alpha.
+
+    Preserve opaque originals for inspection and an approved replacement instead
+    of extracting background pixels as part of the pet.
+    """
+    if "A" not in image.getbands() and "transparency" not in image.info:
+        raise SystemExit(
+            f"{source} has no encoded alpha channel; preserve the original and request "
+            "approval for a replacement with transparent_background: true"
+        )
+    rgba = image.convert("RGBA")
+    alpha = rgba.getchannel("A")
+    minimum, maximum = alpha.getextrema()
+    if minimum != 0:
+        raise SystemExit(
+            f"{source} has no fully transparent background pixels; preserve the original and "
+            "request approval for a replacement with transparent_background: true"
+        )
+    if maximum == 0:
+        raise SystemExit(f"{source} is fully transparent; a sprite requires visible pixels")
+    corners = (
+        (0, 0),
+        (rgba.width - 1, 0),
+        (0, rgba.height - 1),
+        (rgba.width - 1, rgba.height - 1),
+    )
+    if any(alpha.crop((x, y, x + 1, y + 1)).tobytes()[0] > 16 for x, y in corners):
+        raise SystemExit(
+            f"{source} has an opaque exterior; the background must be transparent at all "
+            "four corners"
+        )
+    return rgba
+
+
+# Modified by Whale Skins contributors: optional common body height/baseline
+# preserves jump displacement without changing rendered character pixels.
+FRAME_BODY_HEIGHT = CELL_HEIGHT - 10
+FRAME_BASELINE = None
+CONNECTIVITY_ALPHA_THRESHOLD = 16
+
+
+def fit_to_cell(image: Image.Image) -> Image.Image:
+    bbox = image.getbbox()
+    target = Image.new("RGBA", (CELL_WIDTH, CELL_HEIGHT), (0, 0, 0, 0))
+    if bbox is None:
+        return target
+
+    sprite = image.crop(bbox)
+    max_width = CELL_WIDTH - 10
+    max_height = FRAME_BODY_HEIGHT
+    scale = min(max_width / sprite.width, max_height / sprite.height, 1.0)
+    if scale != 1.0:
+        sprite = sprite.resize(
+            (max(1, round(sprite.width * scale)), max(1, round(sprite.height * scale))),
+            Image.Resampling.LANCZOS,
+        )
+    left = (CELL_WIDTH - sprite.width) // 2
+    top = (CELL_HEIGHT - sprite.height) // 2 if FRAME_BASELINE is None else FRAME_BASELINE - sprite.height
+    target.alpha_composite(sprite, (left, top))
+    return target
+
+
+def fit_viewport_to_cell(image: Image.Image, *, preserve_jump: bool = False) -> Image.Image:
+    target = Image.new("RGBA", (CELL_WIDTH, CELL_HEIGHT), (0, 0, 0, 0))
+    if image.getbbox() is None:
+        return target
+
+    viewport = image.copy()
+    max_width = CELL_WIDTH - 10
+    max_height = CELL_HEIGHT - 10 if preserve_jump else FRAME_BODY_HEIGHT
+    scale = min(max_width / viewport.width, max_height / viewport.height, 1.0)
+    if scale != 1.0:
+        viewport = viewport.resize(
+            (max(1, round(viewport.width * scale)), max(1, round(viewport.height * scale))),
+            Image.Resampling.LANCZOS,
+        )
+    left = (CELL_WIDTH - viewport.width) // 2
+    top = (CELL_HEIGHT - viewport.height) // 2 if FRAME_BASELINE is None else FRAME_BASELINE - viewport.height
+    target.alpha_composite(viewport, (left, top))
+    return target
+
+
+def connected_components(image: Image.Image) -> list[dict[str, object]]:
+    alpha = image.getchannel("A")
+    width, height = image.size
+    data = alpha.tobytes()
+    visited = bytearray(width * height)
+    components: list[dict[str, object]] = []
+
+    for start, alpha_value in enumerate(data):
+        if alpha_value <= CONNECTIVITY_ALPHA_THRESHOLD or visited[start]:
+            continue
+
+        stack = [start]
+        visited[start] = 1
+        pixels: list[int] = []
+        min_x = width
+        min_y = height
+        max_x = 0
+        max_y = 0
+
+        while stack:
+            current = stack.pop()
+            pixels.append(current)
+            x = current % width
+            y = current // width
+            min_x = min(min_x, x)
+            min_y = min(min_y, y)
+            max_x = max(max_x, x)
+            max_y = max(max_y, y)
+
+            if x > 0:
+                neighbor = current - 1
+                if not visited[neighbor] and data[neighbor] > CONNECTIVITY_ALPHA_THRESHOLD:
+                    visited[neighbor] = 1
+                    stack.append(neighbor)
+            if x + 1 < width:
+                neighbor = current + 1
+                if not visited[neighbor] and data[neighbor] > CONNECTIVITY_ALPHA_THRESHOLD:
+                    visited[neighbor] = 1
+                    stack.append(neighbor)
+            if y > 0:
+                neighbor = current - width
+                if not visited[neighbor] and data[neighbor] > CONNECTIVITY_ALPHA_THRESHOLD:
+                    visited[neighbor] = 1
+                    stack.append(neighbor)
+            if y + 1 < height:
+                neighbor = current + width
+                if not visited[neighbor] and data[neighbor] > CONNECTIVITY_ALPHA_THRESHOLD:
+                    visited[neighbor] = 1
+                    stack.append(neighbor)
+
+        components.append(
+            {
+                "pixels": pixels,
+                "area": len(pixels),
+                "bbox": (min_x, min_y, max_x + 1, max_y + 1),
+                "center_x": (min_x + max_x + 1) / 2,
+            }
+        )
+
+    return components
+
+
+def component_group_image(
+    source: Image.Image,
+    components: list[dict[str, object]],
+    padding: int = 4,
+) -> Image.Image:
+    width, height = source.size
+    min_x = max(0, min(component["bbox"][0] for component in components) - padding)
+    min_y = max(0, min(component["bbox"][1] for component in components) - padding)
+    max_x = min(width, max(component["bbox"][2] for component in components) + padding)
+    max_y = min(height, max(component["bbox"][3] for component in components) + padding)
+
+    output = Image.new("RGBA", (max_x - min_x, max_y - min_y), (0, 0, 0, 0))
+    source_pixels = source.load()
+    output_pixels = output.load()
+    # Modified by Whale Skins: group by opaque cores, then retain the exact
+    # original RGBA pixels in a small edge envelope, including soft alpha.
+    core = Image.new("L", output.size, 0)
+    core_pixels = core.load()
+    for component in components:
+        for pixel_index in component["pixels"]:
+            x = pixel_index % width
+            y = pixel_index // width
+            core_pixels[x - min_x, y - min_y] = 255
+    envelope_image = core.filter(ImageFilter.MaxFilter(9))
+    envelope = envelope_image.load()
+    for y in range(output.height):
+        for x in range(output.width):
+            if envelope[x, y]:
+                output_pixels[x, y] = source_pixels[x + min_x, y + min_y]
+    return output
+
+
+def component_frame_groups(
+    strip: Image.Image,
+    frame_count: int,
+) -> list[list[dict[str, object]]] | None:
+    components = connected_components(strip)
+    if not components:
+        return None
+
+    largest_area = max(component["area"] for component in components)
+    seed_threshold = max(120, largest_area * 0.20)
+    seeds = [component for component in components if component["area"] >= seed_threshold]
+    if len(seeds) < frame_count:
+        seeds = sorted(components, key=lambda component: component["area"], reverse=True)[
+            :frame_count
+        ]
+    if len(seeds) < frame_count:
+        return None
+
+    seeds = sorted(
+        sorted(seeds, key=lambda component: component["area"], reverse=True)[:frame_count],
+        key=lambda component: component["center_x"],
+    )
+    seed_ids = {id(seed) for seed in seeds}
+    groups: list[list[dict[str, object]]] = [[seed] for seed in seeds]
+    noise_threshold = max(12, largest_area * 0.002)
+
+    for component in components:
+        if id(component) in seed_ids or component["area"] < noise_threshold:
+            continue
+        nearest_index = min(
+            range(len(seeds)),
+            key=lambda index: abs(seeds[index]["center_x"] - component["center_x"]),
+        )
+        groups[nearest_index].append(component)
+
+    return groups
+
+
+def extract_component_frames(strip: Image.Image, frame_count: int) -> list[Image.Image] | None:
+    groups = component_frame_groups(strip, frame_count)
+    if groups is None:
+        return None
+    return [fit_to_cell(component_group_image(strip, group)) for group in groups]
+
+
+def component_bounds(components: list[dict[str, object]]) -> tuple[int, int, int, int]:
+    return (
+        min(component["bbox"][0] for component in components),
+        min(component["bbox"][1] for component in components),
+        max(component["bbox"][2] for component in components),
+        max(component["bbox"][3] for component in components),
+    )
+
+
+def extract_slot_frames(strip: Image.Image, frame_count: int) -> list[Image.Image]:
+    slot_width = strip.width / frame_count
+    frames = []
+    for index in range(frame_count):
+        left = round(index * slot_width)
+        right = round((index + 1) * slot_width)
+        crop = strip.crop((left, 0, right, strip.height))
+        frames.append(fit_to_cell(crop))
+    return frames
+
+
+def extract_stable_slot_frames(strip: Image.Image, frame_count: int, *, preserve_jump: bool = False) -> list[Image.Image]:
+    groups = component_frame_groups(strip, frame_count)
+    padding = 4
+    if groups is not None:
+        bboxes = [component_bounds(group) for group in groups]
+        shared_top = max(0, min(bbox[1] for bbox in bboxes) - padding)
+        shared_bottom = min(strip.height, max(bbox[3] for bbox in bboxes) + padding)
+        viewport_width = max(bbox[2] - bbox[0] for bbox in bboxes) + padding * 2
+        viewport_height = max(1, shared_bottom - shared_top)
+        frames = []
+        for group, bbox in zip(groups, bboxes):
+            grouped = component_group_image(strip, group, padding=padding)
+            grouped_top = max(0, bbox[1] - padding)
+            viewport = Image.new(
+                "RGBA",
+                (viewport_width, viewport_height),
+                (0, 0, 0, 0),
+            )
+            left = (viewport_width - grouped.width) // 2
+            viewport.alpha_composite(grouped, (left, grouped_top - shared_top))
+            frames.append(fit_viewport_to_cell(viewport, preserve_jump=preserve_jump))
+        return frames
+
+    bbox = strip.getbbox()
+    if bbox is None:
+        return [
+            Image.new("RGBA", (CELL_WIDTH, CELL_HEIGHT), (0, 0, 0, 0)) for _ in range(frame_count)
+        ]
+
+    shared_top = max(0, bbox[1] - padding)
+    shared_bottom = min(strip.height, bbox[3] + padding)
+    slot_width = strip.width / frame_count
+    frames = []
+    for index in range(frame_count):
+        left = round(index * slot_width)
+        right = round((index + 1) * slot_width)
+        crop = strip.crop((left, shared_top, right, shared_bottom))
+        frames.append(fit_viewport_to_cell(crop, preserve_jump=preserve_jump))
+    return frames
+
+
+def extract_state(
+    strip_path: Path,
+    state: str,
+    output_root: Path,
+    method: str,
+) -> dict[str, object]:
+    frame_count = ROW_FRAME_COUNTS[state]
+    with Image.open(strip_path) as opened:
+        strip = load_native_alpha_image(opened, strip_path)
+
+    state_dir = output_root / state
+    state_dir.mkdir(parents=True, exist_ok=True)
+
+    frames = None
+    used_method = method
+    if method in {"auto", "components"}:
+        frames = extract_component_frames(strip, frame_count)
+        if frames is None and method == "components":
+            raise SystemExit(f"could not find {frame_count} sprite components in {strip_path}")
+        if frames is not None:
+            used_method = "components"
+
+    if frames is None:
+        if method == "stable-slots":
+            frames = extract_stable_slot_frames(strip, frame_count, preserve_jump=state == "jumping")
+            used_method = "stable-slots"
+        else:
+            frames = extract_slot_frames(strip, frame_count)
+            used_method = "slots"
+
+    outputs = []
+    for index, frame in enumerate(frames):
+        output = state_dir / f"{index:02d}.png"
+        frame.save(output)
+        outputs.append(str(output))
+    return {"state": state, "frames": outputs, "method": used_method}
+
+
+def main() -> None:
+    global FRAME_BODY_HEIGHT, FRAME_BASELINE, CONNECTIVITY_ALPHA_THRESHOLD
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--decoded-dir", required=True)
+    parser.add_argument("--output-dir", required=True)
+    parser.add_argument("--states", default="all")
+    parser.add_argument(
+        "--method",
+        choices=("auto", "components", "slots", "stable-slots"),
+        default="auto",
+        help="Use connected sprite components when possible, raw equal slots, or row-stable slot viewports.",
+    )
+    parser.add_argument("--body-height", type=int, default=CELL_HEIGHT - 10, help="Common non-jump viewport height; use with stable-slots to reserve jump space")
+    parser.add_argument("--baseline", type=int, help="Bottom-aligned viewport baseline inside each cell")
+    parser.add_argument("--connectivity-alpha-threshold", type=int, default=16, help="Alpha used only to separate pose cores; original edge RGBA is preserved")
+    args = parser.parse_args()
+    if not 16 <= args.body_height <= CELL_HEIGHT - 10:
+        parser.error("body-height must be between 16 and 198")
+    if args.baseline is not None and not CELL_HEIGHT - 10 <= args.baseline <= CELL_HEIGHT - 1:
+        parser.error("baseline must be between 198 and 207")
+    FRAME_BODY_HEIGHT, FRAME_BASELINE = args.body_height, args.baseline
+    if not 0 <= args.connectivity_alpha_threshold <= 128:
+        parser.error("connectivity-alpha-threshold must be between 0 and 128")
+    CONNECTIVITY_ALPHA_THRESHOLD = args.connectivity_alpha_threshold
+
+    decoded_dir = Path(args.decoded_dir).expanduser().resolve()
+    output_dir = Path(args.output_dir).expanduser().resolve()
+    request_path = decoded_dir.parent / "pet_request.json"
+    if request_path.is_file():
+        request = json.loads(request_path.read_text(encoding="utf-8"))
+        if request.get("chroma_key") is not None or request.get("background_mode") == "chroma_key":
+            raise SystemExit(
+                f"{request_path} belongs to a legacy chroma-key run; create a fresh run "
+                "with genuinely transparent generated images"
+            )
+    states = parse_states(args.states)
+    manifest = []
+    for state in states:
+        strip_path = decoded_dir / f"{state}.png"
+        if not strip_path.is_file():
+            raise SystemExit(f"missing generated strip for {state}: {strip_path}")
+        manifest.append(
+            extract_state(
+                strip_path,
+                state,
+                output_dir,
+                args.method,
+            )
+        )
+
+    frame_manifest: dict[str, object] = {"ok": True, "rows": manifest}
+    (output_dir / "frames-manifest.json").write_text(
+        json.dumps(frame_manifest, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    print(json.dumps({"ok": True, "frames_root": str(output_dir), "states": states}, indent=2))
+
+
+if __name__ == "__main__":
+    main()

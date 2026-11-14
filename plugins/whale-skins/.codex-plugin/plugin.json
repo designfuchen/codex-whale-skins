@@ -1,0 +1,30 @@
+{
+  "name": "whale-skins",
+  "version": "0.1.0",
+  "description": "Create, validate and install native Codex pet skins with honest state-driven animation.",
+  "author": {
+    "name": "designfuchen",
+    "url": "https://github.com/designfuchen"
+  },
+  "repository": "https://github.com/designfuchen/codex-whale-skins",
+  "license": "MIT",
+  "skills": "./skills/",
+  "onboardingSkill": "./skills/whale-skin-setup/SKILL.md",
+  "interface": {
+    "displayName": "鲸娘皮肤工坊",
+    "shortDescription": "让你的角色成为 Codex 原生桌宠",
+    "longDescription": "制作、检查和导入原生桌宠皮肤。真实任务状态由 Codex 自己驱动。",
+    "developerName": "designfuchen",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "安装并检查我的鲸娘原生桌宠",
+      "用我的角色图制作一个原生桌宠皮肤",
+      "检查当前桌宠的动作表和安装状态"
+    ],
+    "brandColor": "#426B9C"
+  }
+}

@@ -1,0 +1,19 @@
+Whale Skins: native Codex pet skin tooling.
+
+Original plugin, package manager, documentation and tests: MIT.
+
+plugins/whale-skins/vendor/hatch-pet is the hatch-pet pipeline distributed
+with the OpenAI ChatGPT desktop application.
+Its own LICENSE.txt applies (Apache License 2.0). The original skill,
+scripts, references, and notices are retained in that directory. Two helpers
+carry marked modifications: extract_strip_frames.py adds optional body-height
+and baseline controls for shared-scale jump extraction, plus configurable
+native-alpha component detection that preserves the original edge RGBA;
+assemble_extended_atlas.py
+preserves the registration of an already-normalized neutral cell.
+
+The code license does not relicense user-supplied character art or third-party
+reference images. The local Lanlan whale-maid preview is not part of this
+public source repository. It is installed separately for the user's trial.
+
+This project is independent and is not an official OpenAI or DeepSeek product.
